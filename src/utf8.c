@@ -101,8 +101,17 @@ size_t tickit_utf8_ncount(const char *str, size_t len, TickitStringPos *pos, con
   return tickit_utf8_ncountmore(str, len, pos, limit);
 }
 
+static size_t (*tickit_utf8_ncountmore_override)(const char *str, size_t len, TickitStringPos *pos, const TickitStringPos *limit);
+
+void set_tickit_utf8_ncountmore_fn (size_t(*fn)(const char *str, size_t len, TickitStringPos *pos, const TickitStringPos *limit)) {
+  tickit_utf8_ncountmore_override = fn;
+}
+
 size_t tickit_utf8_ncountmore(const char *str, size_t len, TickitStringPos *pos, const TickitStringPos *limit)
 {
+  if (tickit_utf8_ncountmore_override) {
+    return tickit_utf8_ncountmore_override (str, len, pos, limit);
+  }
   TickitStringPos here = *pos;
   size_t start_bytes = pos->bytes;
 

@@ -538,6 +538,8 @@ size_t tickit_utf8_countmore(const char *str, TickitStringPos *pos, const Tickit
 size_t tickit_utf8_ncount(const char *str, size_t len, TickitStringPos *pos, const TickitStringPos *limit);
 size_t tickit_utf8_ncountmore(const char *str, size_t len, TickitStringPos *pos, const TickitStringPos *limit);
 
+void set_tickit_utf8_ncountmore_fn (size_t(*fn)(const char *str, size_t len, TickitStringPos *pos, const TickitStringPos *limit));
+
 // Some convenient mutators for TickitStringPos structs
 
 static inline void tickit_stringpos_zero(TickitStringPos *pos) {
