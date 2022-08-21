@@ -323,8 +323,8 @@ static bool chpen(TickitTermDriver *ttd, const TickitPen *delta, const TickitPen
       0, // protect
       0); // alt charset
 
-  if(tickit_pen_has_attr(delta, TICKIT_PEN_ITALIC)) {
-    if(td->str.sgr_i1 && tickit_pen_get_bool_attr(delta, TICKIT_PEN_ITALIC))
+  if(tickit_pen_has_attr(delta, TICKIT_PEN_ITALIC) || tickit_pen_get_bool_attr(final, TICKIT_PEN_ITALIC)) {
+    if(td->str.sgr_i1 && tickit_pen_get_bool_attr(final, TICKIT_PEN_ITALIC))
       run_ti(ttd, td->str.sgr_i1, 0);
     else if(td->str.sgr_i0)
       run_ti(ttd, td->str.sgr_i0, 0);
