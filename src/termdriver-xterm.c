@@ -40,6 +40,13 @@ struct XTermDriver {
   } initialised;
 };
 
+enum {
+  TERMCTL_CAP_CURSORSHAPE = TICKIT_TERMCTL_PRIVATE_XTERM + 1,
+  TERMCTL_CAP_SLRM,
+  TERMCTL_CAP_CSI_SUB_COLON,
+  TERMCTL_CAP_RGB8,
+};
+
 static bool print(TickitTermDriver *ttd, const char *str, size_t len)
 {
   tickit_termdrv_write_str(ttd, str, len);
@@ -213,6 +220,7 @@ static struct SgrOnOff { int on, off; } sgr_onoff[] = {
   {  9, 29 }, /* strike */
   { 10, 10 }, /* altfont */
   {  5, 25 }, /* blink */
+  { 70, 75 }, /* sizepos */
 };
 
 static bool chpen(TickitTermDriver *ttd, const TickitPen *delta, const TickitPen *final)
@@ -278,6 +286,17 @@ static bool chpen(TickitTermDriver *ttd, const TickitPen *delta, const TickitPen
         params[pindex++] = onoff->on + val;
       break;
 
+    case TICKIT_PEN_SIZEPOS:
+      val = tickit_pen_get_int_attr(delta, attr);
+      if(!val)
+        params[pindex++] = onoff->off;
+      // no way to handle TICKIT_PEN_SIZEPOS_SMALL
+      else if(val == TICKIT_PEN_SIZEPOS_SUPERSCRIPT)
+        params[pindex++] = 73;
+      else if(val == TICKIT_PEN_SIZEPOS_SUBSCRIPT)
+        params[pindex++] = 74;
+      break;
+
     case TICKIT_PEN_BOLD:
     case TICKIT_PEN_ITALIC:
     case TICKIT_PEN_REVERSE:
@@ -326,6 +345,24 @@ static bool chpen(TickitTermDriver *ttd, const TickitPen *delta, const TickitPen
 static bool getctl_int(TickitTermDriver *ttd, TickitTermCtl ctl, int *value)
 {
   struct XTermDriver *xd = (struct XTermDriver *)ttd;
+
+  switch((int)ctl) {
+    case TERMCTL_CAP_CURSORSHAPE:
+      *value = xd->cap.cursorshape;
+      return true;
+
+    case TERMCTL_CAP_SLRM:
+      *value = xd->cap.slrm;
+      return true;
+
+    case TERMCTL_CAP_CSI_SUB_COLON:
+      *value = xd->cap.csi_sub_colon;
+      return true;
+
+    case TERMCTL_CAP_RGB8:
+      *value = xd->cap.rgb8;
+      return true;
+  }
 
   switch(ctl) {
     case TICKIT_TERMCTL_ALTSCREEN:
@@ -377,6 +414,14 @@ static int mode_for_mouse(TickitTermMouseMode mode)
 static bool setctl_int(TickitTermDriver *ttd, TickitTermCtl ctl, int value)
 {
   struct XTermDriver *xd = (struct XTermDriver *)ttd;
+
+  switch((int)ctl) {
+    case TERMCTL_CAP_RGB8:
+      // Allow forcing this on/off because maybe the user (or at least the
+      // calling program) has a better idea than our probing via DECRQSS
+      xd->cap.rgb8 = !!value;
+      return true;
+  }
 
   switch(ctl) {
     case TICKIT_TERMCTL_ALTSCREEN:
@@ -628,6 +673,7 @@ static TickitTermDriver *new(const TickitTermProbeArgs *args)
 
   struct XTermDriver *xd = malloc(sizeof(struct XTermDriver));
   xd->driver.vtable = &xterm_vtable;
+  xd->driver.name   = tickit_termdrv_info_xterm.name;
 
   xd->dcs_offset = -1;
 
@@ -641,6 +687,37 @@ static TickitTermDriver *new(const TickitTermProbeArgs *args)
   return (TickitTermDriver*)xd;
 }
 
-TickitTermDriverProbe tickit_termdrv_probe_xterm = {
-  .new = new,
+static const char *ctlname(TickitTermCtl ctl)
+{
+  switch((int)ctl) {
+    case TERMCTL_CAP_CURSORSHAPE:   return "xterm.cap_cursorshape";
+    case TERMCTL_CAP_SLRM:          return "xterm.cap_slrm";
+    case TERMCTL_CAP_CSI_SUB_COLON: return "xterm.cap_csi_sub_colon";
+    case TERMCTL_CAP_RGB8:          return "xterm.cap_rgb8";
+
+    default:
+      return NULL;
+  }
+}
+
+static TickitType ctltype(TickitTermCtl ctl)
+{
+  switch((int)ctl) {
+    case TERMCTL_CAP_CURSORSHAPE:
+    case TERMCTL_CAP_SLRM:
+    case TERMCTL_CAP_CSI_SUB_COLON:
+    case TERMCTL_CAP_RGB8:
+      return TICKIT_TYPE_BOOL;
+
+    default:
+      return TICKIT_TYPE_NONE;
+  }
+}
+
+TickitTermDriverInfo tickit_termdrv_info_xterm = {
+  .name       = "xterm",
+  .new        = new,
+  .privatectl = TICKIT_TERMCTL_PRIVATE_XTERM,
+  .ctlname    = ctlname,
+  .ctltype    = ctltype,
 };

@@ -36,9 +36,9 @@
 
 #include <termkey.h>
 
-static TickitTermDriverProbe *driver_probes[] = {
-  &tickit_termdrv_probe_xterm,
-  &tickit_termdrv_probe_ti,
+static TickitTermDriverInfo *driver_infos[] = {
+  &tickit_termdrv_info_xterm,
+  &tickit_termdrv_info_ti,
   NULL,
 };
 
@@ -164,8 +164,8 @@ static TickitTermDriver *tickit_term_build_driver(struct TickitTermBuilder *buil
     .ti_hook  = builder->ti_hook,
   };
 
-  for(int i = 0; driver_probes[i]; i++) {
-    TickitTermDriver *driver = (*driver_probes[i]->new)(&args);
+  for(int i = 0; driver_infos[i]; i++) {
+    TickitTermDriver *driver = (*driver_infos[i]->new)(&args);
     if(driver)
       return driver;
   }
@@ -386,9 +386,32 @@ const char *tickit_term_get_termtype(TickitTerm *tt)
   return tt->termtype;
 }
 
+const char *tickit_term_get_drivername(TickitTerm *tt)
+{
+  return tt->driver->name;
+}
+
+static TickitTermDriverInfo *driverinfo(TickitTerm *tt)
+{
+  for(int i = 0; driver_infos[i]; i++)
+    /* These pointers are copied directly */
+    if(driver_infos[i]->name == tt->driver->name)
+      return driver_infos[i];
+
+  return NULL;
+}
+
 TickitTermDriver *tickit_term_get_driver(TickitTerm *tt)
 {
   return tt->driver;
+}
+
+int tickit_term_get_driverctl_range(TickitTerm *tt)
+{
+  TickitTermDriverInfo *info = driverinfo(tt);
+  if(info)
+    return info->privatectl;
+  return 0;
 }
 
 static void *get_tmpbuffer(TickitTerm *tt, size_t len)
@@ -1106,8 +1129,15 @@ void tickit_term_resume(TickitTerm *tt)
     (*tt->driver->vtable->resume)(tt->driver);
 }
 
-const char *tickit_term_ctlname(TickitTermCtl ctl)
+const char *tickit_termctl_name(TickitTermCtl ctl)
 {
+  if(ctl & TICKIT_TERMCTL_PRIVATEMASK) {
+    for(int i = 0; driver_infos[i]; i++)
+      if((ctl & TICKIT_TERMCTL_PRIVATEMASK) == driver_infos[i]->privatectl)
+        return (*driver_infos[i]->ctlname)(ctl);
+    return NULL;
+  }
+
   switch(ctl) {
     case TICKIT_TERMCTL_ALTSCREEN:      return "altscreen";
     case TICKIT_TERMCTL_CURSORVIS:      return "cursorvis";
@@ -1125,19 +1155,47 @@ const char *tickit_term_ctlname(TickitTermCtl ctl)
   return NULL;
 }
 
-TickitTermCtl tickit_term_lookup_ctl(const char *name)
+TickitTermCtl tickit_termctl_lookup(const char *name)
 {
   const char *s;
 
   for(TickitTermCtl ctl = 1; ctl < TICKIT_N_TERMCTLS; ctl++)
-    if((s = tickit_term_ctlname(ctl)) && streq(name, s))
+    if((s = tickit_termctl_name(ctl)) && streq(name, s))
       return ctl;
+
+  const char *dotat = strchr(name, '.');
+  if(dotat) {
+    size_t prefixlen = dotat - name;
+    for(int i = 0; driver_infos[i]; i++) {
+      if(strncmp(name, driver_infos[i]->name, prefixlen) != 0 ||
+          driver_infos[i]->name[prefixlen] != 0)
+        continue;
+
+      for(int ctl = driver_infos[i]->privatectl + 1; ; ctl++) {
+        const char *ctlname = (*driver_infos[i]->ctlname)(ctl);
+        if(!ctlname)
+          break;
+
+        if(strcmp(name, ctlname) == 0)
+          return ctl;
+      }
+
+      return -1;
+    }
+  }
 
   return -1;
 }
 
-TickitType tickit_term_ctltype(TickitTermCtl ctl)
+TickitType tickit_termctl_type(TickitTermCtl ctl)
 {
+  if(ctl & TICKIT_TERMCTL_PRIVATEMASK) {
+    for(int i = 0; driver_infos[i]; i++)
+      if((ctl & TICKIT_TERMCTL_PRIVATEMASK) == driver_infos[i]->privatectl)
+        return (*driver_infos[i]->ctltype)(ctl);
+    return TICKIT_TYPE_NONE;
+  }
+
   switch(ctl) {
     case TICKIT_TERMCTL_ALTSCREEN:
     case TICKIT_TERMCTL_CURSORVIS:
@@ -1160,3 +1218,7 @@ TickitType tickit_term_ctltype(TickitTermCtl ctl)
   }
   return TICKIT_TYPE_NONE;
 }
+
+const char *tickit_term_ctlname(TickitTermCtl ctl) { return tickit_termctl_name(ctl); }
+TickitTermCtl tickit_term_lookup_ctl(const char *name) { return tickit_termctl_lookup(name); }
+TickitType tickit_term_ctltype(TickitTermCtl ctl) { return tickit_termctl_type(ctl); }

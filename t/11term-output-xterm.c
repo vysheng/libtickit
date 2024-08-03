@@ -25,6 +25,7 @@ int main(int argc, char *argv[])
   ok(!!tt, "tickit_term_build");
 
   is_str(tickit_term_get_termtype(tt), "xterm", "tickit_term_get_termtype");
+  is_str(tickit_term_get_drivername(tt), "xterm", "tickit_term_get_drivername");
 
   is_int(tickit_term_get_output_fd(tt), -1, "tickit_term_get_output_fd");
 
@@ -128,6 +129,12 @@ int main(int argc, char *argv[])
 
   /* Now (belatedly) respond to the DECSLRM probe to enable more scrollrect options */
   tickit_term_input_push_bytes(tt, "\e[?69;1$y", 9);
+
+  {
+    int b;
+    ok(tickit_term_getctl_int(tt, tickit_termctl_lookup("xterm.cap_slrm"), &b), "tickit_term can get xterm.cap_srlm");
+    ok(b, "tickit_term has xterm.cap_slrm true");
+  }
 
   buffer[0] = 0;
   is_int(tickit_term_scrollrect(tt, RECT(3,10,5,60), 1, 0), 1, "tickit_term can scroll partial lines vertically with DECSLRM enabled");

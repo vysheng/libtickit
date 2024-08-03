@@ -7,6 +7,8 @@
 #include <string.h>
 #include <stdarg.h>
 
+#define streq(a,b) (strcmp(a,b) == 0)
+
 /* I would love if terminfo gave us these extra strings, but it does not. At a
  * minor risk of non-portability, define them here.
  */
@@ -97,6 +99,10 @@ struct TIDriver {
   } str;
 
   const struct TermInfoExtraStrings *extra;
+};
+
+enum {
+  TERMCTL_CAP_BCE = TICKIT_TERMCTL_PRIVATE_TERMINFO + 1,
 };
 
 static const char *lookup_ti_string(struct TIDriver *td, const TickitTermProbeArgs *args, enum unibi_string s)
@@ -346,6 +352,12 @@ static bool getctl_int(TickitTermDriver *ttd, TickitTermCtl ctl, int *value)
 {
   struct TIDriver *td = (struct TIDriver *)ttd;
 
+  switch((int)ctl) {
+    case TERMCTL_CAP_BCE:
+      *value = td->cap.bce;
+      return true;
+  }
+
   switch(ctl) {
     case TICKIT_TERMCTL_ALTSCREEN:
       *value = td->mode.altscreen;
@@ -488,6 +500,7 @@ static TickitTermDriver *new(const TickitTermProbeArgs *args)
 
   struct TIDriver *td = malloc(sizeof(struct TIDriver));
   td->driver.vtable = &ti_vtable;
+  td->driver.name   = tickit_termdrv_info_ti.name;
 
   td->ut = ut;
 
@@ -531,12 +544,37 @@ static TickitTermDriver *new(const TickitTermProbeArgs *args)
   td->str.rm_csr = require_ti_string(td, args, unibi_cursor_invisible);
 
   const char *key_mouse = lookup_ti_string(td, args, unibi_key_mouse);
-  if(key_mouse && strcmp(key_mouse, "\e[M") == 0)
+  /* Some terminfos claim the mouse key is the weird \e[< that introduces SGR
+   * mode reporting. While technically wrong, we should be prepared to accept
+   * these anyway
+   */
+  if(key_mouse && (streq(key_mouse, "\e[M") || streq(key_mouse, "\e[<")))
     td->extra = &extra_strings_vt200_mouse;
   else
     td->extra = &extra_strings_default;
 
   return (TickitTermDriver*)td;
+}
+
+static const char *ctlname(TickitTermCtl ctl)
+{
+  switch((int)ctl) {
+    case TERMCTL_CAP_BCE: return "terminfo.cap_bce";
+
+    default:
+      return NULL;
+  }
+}
+
+static TickitType ctltype(TickitTermCtl ctl)
+{
+  switch((int)ctl) {
+    case TERMCTL_CAP_BCE:
+      return TICKIT_TYPE_BOOL;
+
+    default:
+      return TICKIT_TYPE_NONE;
+  }
 }
 
 #else /* not HAVE_UNIBILIUM */
@@ -546,8 +584,16 @@ static TickitTermDriver *new(const TickitTermProbeArgs *args)
   return NULL;
 }
 
+static const char *ctlname(TickitTermCtl ctl) { return NULL; }
+
+static TickitType ctltype(TickitTermCtl ctl) { return TICKIT_TYPE_NONE; }
+
 #endif
 
-TickitTermDriverProbe tickit_termdrv_probe_ti = {
-  .new = new,
+TickitTermDriverInfo tickit_termdrv_info_ti = {
+  .name       = "terminfo",
+  .new        = new,
+  .privatectl = TICKIT_TERMCTL_PRIVATE_TERMINFO,
+  .ctlname    = ctlname,
+  .ctltype    = ctltype,
 };
